@@ -6,6 +6,8 @@
 # GNU General Public License version 2 or any later version.
 #
 # Enhanced for "pretty XML" 2014 by Thorsten Weimann
+#
+# Changes to make this extension work with Python 3 2023 by Laura Bromley
 
 '''Encode/decode filter for uncompressed storage of zipped document formats
 
@@ -105,18 +107,15 @@ import zipfile
 from mercurial import util, ui, hg
 from mercurial.i18n import _
 
-try:
-    from cStringIO import StringIO
-except:
-    from StringIO import StringIO
+from io import BytesIO 
 
 
 def zipdocencode(s, cmd, **kwargs):
     '''Encode filter: uncompresses the zipped document format when writing
-    to the repository.'''        
+    to the repository.'''
     # wrap string representation of the file provided by Mercurial
     # in a file-like object that can be used with zipfile
-    infile = StringIO(s)
+    infile = BytesIO(s)
     # open the file as a zip archive
     # if the file is not a zip archive (e.g. because the file is a link having
     # the same extension) just use the regular file's string representation
@@ -130,12 +129,12 @@ def zipdocencode(s, cmd, **kwargs):
         # broken zip but thats beyond our scope.
         kwargs["ui"].note(_("zipdoc: Skipped encoding '" + kwargs["filename"]
                 + "' due to bad ZIP archive. The file is not a ZIP"
-                " (might be a link) or the archive is broken.\n"))
+                + " (might be a link) or the archive is broken.\n"))
         return s
     archive_member_infos = zipped.infolist()
     
     # string wrapper for the output file to return to Mercurial
-    outfile = StringIO()
+    outfile = BytesIO()
     uncompressed = zipfile.ZipFile(outfile, "w", zipfile.ZIP_STORED)
         
     for archive_member_info in archive_member_infos:  
@@ -146,7 +145,7 @@ def zipdocencode(s, cmd, **kwargs):
         if archive_member_info.filename.lower().endswith('.xml'):
             # Split lines for better diffs
             uncompressed.writestr(archive_member_info,
-                                  archive_member.replace("><", ">\r\n <"))
+                                  archive_member.replace(b"><", b">\r\n <"))
         else:
             uncompressed.writestr(archive_member_info, archive_member)
     zipped.close()    
@@ -161,18 +160,18 @@ def zipdocencode(s, cmd, **kwargs):
 def zipdocdecode(s, cmd, **kwargs):
     '''Decode filter: compresses the zipped document format when reading from
     the repository.'''
-    infile = StringIO(s)
+    infile = BytesIO(s)
     try:
         uncompressed = zipfile.ZipFile(infile, "r")
     except zipfile.BadZipfile:
         kwargs["ui"].note(_("zipdoc: Skipped decoding '%s"
                 + "' due to bad ZIP archive. The file is not a ZIP"
-                " (might be a link) or the archive is broken.\n")
+                + " (might be a link) or the archive is broken.\n")
                 % kwargs["filename"])
         return s        
     archive_member_infos = uncompressed.infolist()
     
-    outfile = StringIO()
+    outfile = BytesIO()
     zipped = zipfile.ZipFile(outfile, "w", zipfile.ZIP_DEFLATED)
     
     for archive_member_info in archive_member_infos:     
@@ -183,7 +182,7 @@ def zipdocdecode(s, cmd, **kwargs):
         if archive_member_info.filename.lower().endswith('.xml'):
             # Revert splitted lines
             zipped.writestr(archive_member_info,
-                            archive_member.replace(">\r\n <", "><"))
+                            archive_member.replace(b">\r\n <", b"><"))
         else:
             zipped.writestr(archive_member_info, archive_member)
     zipped.close()    
@@ -198,8 +197,8 @@ def zipdocdecode(s, cmd, **kwargs):
 
 # define the filter names that are used in the [encode] and [decode] sections
 _filters = {
-    'zipdocencode': zipdocencode,
-    'zipdocdecode': zipdocdecode
+    b'zipdocencode': zipdocencode,
+    b'zipdocdecode': zipdocdecode
     }
 
 # register the filter names that are used in the 
@@ -207,5 +206,6 @@ _filters = {
 def reposetup(ui, repo):
     if not repo.local():
         return
-    for name, fn in _filters.iteritems():
+    for name, fn in _filters.items():
         repo.adddatafilter(name, fn)
+
